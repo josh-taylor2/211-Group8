@@ -4,7 +4,11 @@ from time import sleep
 import threading
 
 board_length = 122
-angle_error = 10
+angle_error = 10  # gyro sensor value(angle) margin of error
+x_pos_range = range(0-angle_error, 0+angle_error+1)      # when the angle is 0 +- margin of error, robot is facing +x
+y_pos_range = range(90-angle_error, 90+angle_error+1)    # when the angle is 90 +- margin of error, robot is facing +y
+x_neg_range = range(180-angle_error, 180+angle_error+1)  # when the angle is 180 +- margin of error, robot is facing -x
+ y_neg_range = range(270-angle_error, 270+angle_error+1)  # when the angle is 270 +- margin of error, robot is facing -y
 
 BP.reset_all()
 
@@ -31,26 +35,27 @@ class landmark:
 
 # Return the list of US sensor value in x, y direction and gyro sensor value in degrees
 def get_wall_US_distance():
-    if wall_us.get_value() == None:
-        z = 0
+    if wall_us.get_value() == None:    # use US sensor function get_value() to get distance
+        z = 0                          # if it returns none, just write zero.
     else:  
         z = wall_us.get_value()
-    if gyro_sensor.get_both_measure() == None:
-        g = [0, 0]
+    if gyro_sensor.get_both_measure() == None:      # use gyro sensor function get_both_measure() to get [angle(deg), speed]
+        g = [0, 0]                                  # if it returns none, just write zero.
     else:
         g = gyro_sensor.get_both_measure()
     
-    theta = reduce_angle(g[0])
+    theta = reduce_angle(g[0])        # reduce the angle to the range (0~360)
 
     # calculate US sensor value in x and y direction
-    x = z * math.cos(math.radians(theta)) 
-    y = z * math.sin(math.radians(theta))
+    x = z * math.cos(math.radians(theta))             # calculate x_value with the distance and the angle
+    y = z * math.sin(math.radians(theta))             # calculate y_value with the distance and the angle
 
         
-    distance = [float(z), round(x, 2), round(y, 2), round(theta, 2)]
+    distance = [float(z), round(x, 2), round(y, 2), round(theta, 2)]      # append the rounded values to a list
     
     return distance
 
+# Same as get_wall_US_distance. The reason we have separate functions is because they use different sensor ports.
 def get_block_US_distance():
     if block_us.get_value() == None:
         z = 0
@@ -72,50 +77,47 @@ def get_block_US_distance():
     
     return distance
 
-# reduce the theta to 0~360 // tested
+# reduce an angle to 0~360 using modulus
 def reduce_angle(angle):
     reduced_angle = abs(angle) % 360
     return reduced_angle
 
-# determine if the gyro sensor is facing +x,+y or -x,-y   // tested
+# determine if the gyro sensor is facing +x,+y or -x,-y 
 # +x,+y -> 1, -x,-y -> -1
+# parameter: reduced gyro sensor value
 def gyro_direction(angle):
-    x_pos_range = range(0-angle_error, 0+angle_error+1)
-    y_pos_range = range(90-angle_error, 90+angle_error+1)
-    x_neg_range = range(180-angle_error, 180+angle_error+1)
-    y_neg_range = range(270-angle_error, 270+angle_error+1)
-    direction = 1
-    if abs(angle) in x_pos_range or abs(angle) in y_pos_range:
+    direction = 1                                            # default direction = 1
+    if abs(angle) in x_pos_range or abs(angle) in y_pos_range:     # if robot is in pos range, direction = -1
         direction = -1
-    if abs(angle) in x_neg_range or abs(angle) in y_neg_range:
+    if abs(angle) in x_neg_range or abs(angle) in y_neg_range:     # if in neg range, direction = 1
         direction = 1
     print(direction)
-    return direction
+    return direction                                               # this will be used when calculating the position with board length
 
 
-# Check if the distance received is entirely in x direction (angle error +- 2 deg) // tested
+# Check if the distance received is entirely in x direction (angle error +- 10 deg)
+# input : distance list from get_wall_US_distance()  or get_block_US_distance()
 def is_x_distance(distance):
-    x_pos_range = range(0-angle_error, 0+angle_error+1)
-    x_neg_range = range(180-angle_error, 180+angle_error+1)
-    angle = reduce_angle(distance[3])
-    if abs(angle) in x_pos_range or abs(angle) in x_neg_range:
+    angle = reduce_angle(distance[3])            # reduce the gyro sensor value(angle) to 0~360
+    if abs(angle) in x_pos_range or abs(angle) in x_neg_range:      #only if the angle is 0 or 180 (plus margin of error), return true 
         x = distance[1]
         return True
     else:
         return False
 
-# Check if the distance received is entirely in y direction (angle error +- 2 deg) // tested
+# Check if the distance received is entirely in y direction (angle error +- 10 deg)
+# input : distance list from get_wall_US_distance()  or get_block_US_distance()
 def is_y_distance(distance):
-    y_pos_range = range(90-angle_error, 90+angle_error+1)
-    y_neg_range = range(270-angle_error, 270+angle_error+1)
-    angle = reduce_angle(distance[3])
-    if abs(angle) in y_pos_range or abs(angle) in y_neg_range:
+    angle = reduce_angle(distance[3])                # reduce the gyro sensor value(angle) to 0~360
+    if abs(angle) in y_pos_range or abs(angle) in y_neg_range:      #only if the angle is 90 or 270 (plus margin of error), return true 
         y = distance[1]
         return True
     else:
         return False
 
-# Get the average of the values in the list // tested
+# Get the average of the values in the list
+# will be used to get the average of multiple distances
+# we need to build a better function for filtering like median filter, decision tree, etc.
 def get_average(list):
     sum = 0
     for i in range(len(list)):
@@ -126,7 +128,8 @@ def get_average(list):
 
 
 
-# Get 30 values of the US sensor and average the x and y value -> returns the position of the robot
+# Take the distance lists from get_US_distance() as inputs
+# if the angle of the distance is 
 def add_position_candidates(x_candidate: list, y_candidate: list, distance: list):
     if is_x_distance(distance) and distance[1] != 0:
         x_position = (board_length + (gyro_direction(distance[3])*((distance[0])+15))) % board_length
