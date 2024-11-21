@@ -129,7 +129,9 @@ def get_average(list):
 
 
 # Take the distance lists from get_US_distance() as inputs
-# if the angle of the distance is 
+# if the gyro sensor value is 0 or 180(plus MOE), AND the distance is not 0, add the position to x_candidate list
+# if the gyro sensor value is 90 or 270(plus MOE), AND the distance is not 0, add the position to y_candidate list
+# return candidate lists
 def add_position_candidates(x_candidate: list, y_candidate: list, distance: list):
     if is_x_distance(distance) and distance[1] != 0:
         x_position = (board_length + (gyro_direction(distance[3])*((distance[0])+15))) % board_length
@@ -145,7 +147,8 @@ def add_position_candidates(x_candidate: list, y_candidate: list, distance: list
 
     return [x_candidate, y_candidate]
 
-
+# literally just get the average of the candidate lists to get the position.
+# again, need to make a better filter function
 def get_self_position(x_candidate, y_candidate):
     x_fp = get_average(x_candidate)
     y_fp = get_average(y_candidate)
