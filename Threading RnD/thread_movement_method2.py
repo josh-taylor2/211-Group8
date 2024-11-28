@@ -2,18 +2,20 @@ import threading
 # Add your imports here, if any
 from utils.brick import BP, Motor, EV3ColorSensor, wait_ready_sensors, TouchSensor, reset_brick, EV3UltrasonicSensor
 from time import sleep
+import time
+import wallfollowing
+
+flags = { "flag1" : True, "flag2": True}
+
+flags_lock = threading.Lock()
+
 
 DELAY = 0.1
 cs_data = "floor_yellow_results.csv"
 
 # complete this based on your hardware setup
 
-#TOUCH_SENSOR = TouchSensor(1)
-
-
-
-wait_ready_sensors(True) # Input True to see what the robot is trying to initialize! False to be silent.
-
+ # Input True to see what the robot is trying to initialize! False to be silent.
 
 BP.reset_all()
 
@@ -23,18 +25,32 @@ SLEEP_US = 0.3
 DELAY = 0.1
 cs_data = "test_results.csv"
  
+# sensors and motors
 
-#block_ultrasonic = EV3UltrasonicSensor(1)
-wall_ultrasonic = EV3UltrasonicSensor(2)
-color_center = EV3ColorSensor(4)
+wall_us = EV3UltrasonicSensor(2)
+touch_sensor = TouchSensor(3)
 color_left = EV3ColorSensor(1)
-#wall_ultrasonic = EV3Ultrasonic Sensor(2)
 left_motor = Motor("C")
 right_motor = Motor("B")
-#wait_ready_sensors()
+
+
+wait_ready_sensors(True)
+
+# Returns the mean of three values
 
 def mean(first, second, third):
     return ((first + second + third) / 3)
+
+# Robot moves forward while turning left
+
+def move_left_arc(dps, sleep_motor):
+    print("left arc")
+    rt = threading.Thread(target = move_right_forward, args = (dps, sleep_motor))
+    lt = threading.Thread(target = move_left_forward, args = ((dps-5), sleep_motor))
+    rt.start()
+    lt.start()
+
+# left wheel of the robot moves at [dps] speed for [sleep_motor] seconds
 
 def move_left_forward(dps, sleep_motor):
     print("left")
@@ -42,20 +58,26 @@ def move_left_forward(dps, sleep_motor):
     sleep(sleep_motor)
     left_motor.set_power(0)
     #BP.reset_all()
-    
+ 
+ # right wheel of the robot moves at [dps] speed for [sleep_motor] seconds
+ 
 def move_right_forward(dps, sleep_motor):
     print("right")
     right_motor.set_power(-dps)
     sleep(sleep_motor)
     right_motor.set_power(0)
     #BP.reset_all()
-    
+
+# Use threads to move the robot forward
+
 def move_forward(d, s): # to avoid setting dps for a fixed amount of time,
                         # move each wheel in a separate thread 
     rf = threading.Thread(target = move_right_forward, args = (d, s))
     lf = threading.Thread(target = move_left_forward, args = (d, s))
     rf.start()
     lf.start()
+
+# Use threads to turn the robot right
 
 def turn_right(d, s): # to avoid setting dps for a fixed amount of time,
                         # move each wheel in a separate thread 
@@ -64,28 +86,30 @@ def turn_right(d, s): # to avoid setting dps for a fixed amount of time,
     rt.start()
     lt.start()
 
-def new_move_forward(dps, sleep_motor):
-    for i in range(sleep_motor):
-        left_motor.set_power(dps)
-        right_motor.set_power(dps)
-        sleep(i)
-    BP.reset_all()
+# def new_move_forward(dps, sleep_motor):
+#     for i in range(sleep_motor):
+#         left_motor.set_power(dps)
+#         right_motor.set_power(dps)
+#         sleep(i)
+#     BP.reset_all()
+
+# Stop moving by setting power 0 (without threads)
     
 def stop_moving(sleep_motor):
     left_motor.set_dps(0)
     right_motor.set_dps(0)
     sleep(sleep_motor)
     
-def get_distance_to_block(SLEEP_US):
-    for i in range(20):
-        print("block:", block_ultrasonic.get_value())
-        sleep(SLEEP_US)
-
-
-def get_distance_to_wall(SLEEP_US):
-    for i in range(20):
-        print("wall", wall_ultrasonic.get_value())
-        sleep(SLEEP_US)
+# def get_distance_to_block(SLEEP_US):
+#     for i in range(20):
+#         print("block:", block_ultrasonic.get_value())
+#         sleep(SLEEP_US)
+# 
+# 
+# def get_distance_to_wall(SLEEP_US):
+#     for i in range(20):
+#         print("wall", wall_ultrasonic.get_value())
+#         sleep(SLEEP_US)
 
 
 #!/usr/bin/env python3
@@ -130,6 +154,7 @@ def normalize(r, g, b):
 
 #this runs similarly to the color collection program, but instead of printing the RGB values
 #That is collects, it prints what it thinks the color of the floor is
+#it only returns a value("blue") when it detects blue
 def left_continuous_color_sensor_collection():
     counter = 0
     
@@ -157,16 +182,16 @@ def left_continuous_color_sensor_collection():
 
             decision = classify_color(normalized_tuple[0], normalized_tuple[1], normalized_tuple[2])
 #             print(normalized_tuple)
-#             print(decision)
+            print(decision)
             if decision == "blue":
                 return decision
 #             else: pass
         sleep(0.1)
 
-
 #this runs similarly to the color collection program, but instead of printing the RGB values
 #That is collects, it prints what it thinks the color of the floor is
-def center_continuous_color_sensor_collection():
+#it only returns a value("green") when it detects green
+def left_green_continuous_color_sensor_collection():
     counter = 0
     
     #These variables hold the three values that will be averaged in order to calculate the "current color guess"
@@ -176,7 +201,7 @@ def center_continuous_color_sensor_collection():
 
     while counter < 600:
         counter += 1
-        color_data = color_center.get_rgb()
+        color_data = color_left.get_rgb()
 #         print(color_data)
         if color_data[0] is not None:
             normalized_tuple = normalize(color_data[0], color_data[1], color_data[2])
@@ -193,239 +218,164 @@ def center_continuous_color_sensor_collection():
 
             decision = classify_color(normalized_tuple[0], normalized_tuple[1], normalized_tuple[2])
 #             print(normalized_tuple)
-#             print(decision)
-            if decision == "blue":
+            print(decision)
+            if decision == "green":
+                
                 return decision
 #             else: pass
         sleep(0.1)
+#this runs similarly to the color collection program, but instead of printing the RGB values
+#That is collects, it prints what it thinks the color of the floor is
+# def center_continuous_color_sensor_collection():
+#     counter = 0
+#     
+#     #These variables hold the three values that will be averaged in order to calculate the "current color guess"
+#     first = (0, 0, 1)
+#     second = (0, 0, 1)
+#     third = (0, 0, 1)
+# 
+#     while counter < 600:
+#         counter += 1
+#         color_data = color_center.get_rgb()
+# #         print(color_data)
+#         if color_data[0] is not None:
+#             normalized_tuple = normalize(color_data[0], color_data[1], color_data[2])
+#             
+# 
+#             ##this uses the most recent collection and updates first, second and third
+#             third = second
+#             second = first
+#             first = normalized_tuple
+# 
+#             newR = mean(first[0], second[0], third[0])
+#             newG = mean(first[1], second[1], third[1])
+#             newB = mean(first[2], second[2], third[2])
+# 
+#             decision = classify_color(normalized_tuple[0], normalized_tuple[1], normalized_tuple[2])
+# #             print(normalized_tuple)
+# #             print(decision)
+#             if decision == "blue":
+#                 return decision
+# #             else: pass
+#         sleep(0.1)
+# 
+# def constant_color_sensor_collection():
+#     counter = 0
+#     
+#     #These variables hold the three values that will be averaged in order to calculate the "current color guess"
+#     first = (0, 0, 1)
+#     second = (0, 0, 1)
+#     third = (0, 0, 1)
+# 
+#     while counter < 600:
+#         counter += 1
+#         color_data = color.get_rgb()
+#         print(color_data)
+#         if color_data[0] is not None:
+#             normalized_tuple = normalize(color_data[0], color_data[1], color_data[2])
+#             
+# 
+#             ##this uses the most recent collection and updates first, second and third
+#             third = second
+#             second = first
+#             first = normalized_tuple
+# 
+#             newR = mean(first[0], second[0], third[0])
+#             newG = mean(first[1], second[1], third[1])
+#             newB = mean(first[2], second[2], third[2])
+# 
+#             decision = classify_color(normalized_tuple[0], normalized_tuple[1], normalized_tuple[2])
+#             print(normalized_tuple)
+#             print(decision)
+#             return decision
+# #             else: pass
+#         sleep(0.1)
 
-def constant_color_sensor_collection():
-    counter = 0
-    
-    #These variables hold the three values that will be averaged in order to calculate the "current color guess"
-    first = (0, 0, 1)
-    second = (0, 0, 1)
-    third = (0, 0, 1)
+# not used                
+# def choose_direction():
+#     right_counter = 0
+#     left_counter = 0
+#     turn_right(-20,15)
+#     while right_counter <= 25:
+#         detection = constant_color_sensor_collection()
+#         if detection == "green":
+#             stop_moving(0.5)
+#             turn_right(20,15)
+#             sleep(0.3*right_counter)
+#             stop_moving(0.5)
+#             break
+#         sleep(0.3)
+#         right_counter += 1
+#     turn_right(20,15)
+#     while left_counter <= 25:
+#         detection = constant_color_sensor_collection()
+#         if detection == "green":
+#             stop_moving(0.5)
+#             turn_right(-20,15)
+#             sleep(0.3*left_counter)
+#             stop_moving(0.5)
+#             break
+#         sleep(0.3)
+#         left_counter += 1
+#     if right_counter >= left_counter:
+#         direction = 1
+#     else: direction = -1
+#     return direction
 
-    while counter < 600:
-        counter += 1
-        color_data = color.get_rgb()
-        print(color_data)
-        if color_data[0] is not None:
-            normalized_tuple = normalize(color_data[0], color_data[1], color_data[2])
-            
 
-            ##this uses the most recent collection and updates first, second and third
-            third = second
-            second = first
-            first = normalized_tuple
-
-            newR = mean(first[0], second[0], third[0])
-            newG = mean(first[1], second[1], third[1])
-            newB = mean(first[2], second[2], third[2])
-
-            decision = classify_color(normalized_tuple[0], normalized_tuple[1], normalized_tuple[2])
-            print(normalized_tuple)
-            print(decision)
-            return decision
-#             else: pass
-        sleep(0.1)
-                
-def choose_direction():
-    right_counter = 0
-    left_counter = 0
-    turn_right(-20,15)
-    while right_counter <= 25:
-        detection = constant_color_sensor_collection()
-        if detection == "green":
-            stop_moving(0.5)
-            turn_right(20,15)
-            sleep(0.3*right_counter)
-            stop_moving(0.5)
-            break
-        sleep(0.3)
-        right_counter += 1
-    turn_right(20,15)
-    while left_counter <= 25:
-        detection = constant_color_sensor_collection()
-        if detection == "green":
-            stop_moving(0.5)
-            turn_right(-20,15)
-            sleep(0.3*left_counter)
-            stop_moving(0.5)
-            break
-        sleep(0.3)
-        left_counter += 1
-    if right_counter >= left_counter:
-        direction = 1
-    else: direction = -1
-    return direction
-
-def around_water(detection_l, detection_c):
-    detection_c = center_continuous_color_sensor_collection()
-    detection_l = left_continuous_color_sensor_collection()
-    print("left: " + detection_l + "center: " + detection_c)
-    if detection_c or detection_l == "blue":
+# this function is part of a iterative function.
+# it 
+def around_water(detection_l):
+    detection_l = left_continuous_color_sensor_collection()  # It starts detecting the color of the floor until it detects blue,
+    if detection_l == "blue":
         stop_moving(1)
-        turn_right(-20,15)
-        print("detection: " + detection_l + " and " + detection_c)
+        turn_right(-15,15) # turns right
+        sleep(0.3)         # the sleep is to put a slight delay until the color sensor starts detecting again
+        detection_l = left_green_continuous_color_sensor_collection() # starts detecting for green while turning
+        if detection_l == "green": # when it detects green, stop and move forward and left
+            stop_moving(1)
+            move_left_arc(30,15)
+            sleep(0.3)   # the same function will be called right after in order to stop the robot when detecting blue.
+
+            
+        
+
+
+
     
 
 def main_function():
     
+    wall_distance = 4
 
-    #t3 = threading.Thread(target = get_distance_to_block, args = (0.3,))
-    #t4 = threading.Thread(target = stop_moving, args = (2,))
-    #t5 = threading.Thread(target = get_distance_to_wall, args = (0.3,))
     print("hi")
     sleep(4)
     #move_forward(30,15)
-    move_forward(30,15)
-    detection_l0 = ""
-    detection_c0 = ""
-    detection_l1 = ""
-    detection_c1 = ""
-    detection_l2 = ""
-    detection_c2 = ""
-    detection_l3 = ""
-    detection_c3 = ""
-    detection_l4 = ""
-    detection_c4 = ""
-    detection_c = center_continuous_color_sensor_collection()
-    detection_l = left_continuous_color_sensor_collection()
-    if detection_c or detection_l == "blue":
-        stop_moving(1)
-        turn_right(-20,0.8)
-        sleep(0.8)
-        move_forward(20,1.5)
-        sleep(2)
-        turn_right(20,15)
-        detection_c0 = center_continuous_color_sensor_collection()
-        detection_l0 = left_continuous_color_sensor_collection()
-        if detection_c0 or detection_l0 == "blue":
-            stop_moving(1)
-            turn_right(-20,0.8)
-            sleep(0.8)
-            move_forward(20,1.5)
-            sleep(2)
-            turn_right(20,15)
-            detection_c1 = center_continuous_color_sensor_collection()
-            detection_l1 = left_continuous_color_sensor_collection()
-            if detection_c1 or detection_l1 == "blue":
-                stop_moving(1)
-                turn_right(-20,0.8)
-                sleep(0.8)
-                move_forward(20,1.5)
-                sleep(2)
-                turn_right(20,15)
-                detection_c2 = center_continuous_color_sensor_collection()
-                detection_l2 = left_continuous_color_sensor_collection()
-                if detection_c2 or detection_l2 == "blue":
-                    stop_moving(1)
-                    turn_right(-20,0.8)
-                    sleep(0.8)
-                    move_forward(20,1.5)
-                    sleep(2)
-                    turn_right(20,15)
-                detection_c3 = center_continuous_color_sensor_collection()
-                detection_l3 = left_continuous_color_sensor_collection()
-                if detection_c3 or detection_l3 == "blue":
-                    stop_moving(1)
-                    turn_right(-20,0.8)
-                    sleep(0.8)
-                    move_forward(20,1.5)
-                    sleep(2)
-                    turn_right(20,15)
-            
-        #     move_forward(40,0.5)
-#     sleep(0.5)
-#     turn_right(20,1)
-#     around_water(detection_2)
-#     print("still going")
-#     move_forward(40,0.5)
-#     sleep(0.5)
-#     turn_right(20,1)
-#     around_water(detection_3)
-    
-
-    
-    
-    
-#
-    
-# def follow_border():
-#     # If the distance from the wall is "too small, the robot will move away from the wall
-#     seconds = 0
-#     direction = -1
-#     while seconds <= 200:
-#         detection = constant_color_sensor_collection()
-#         print(detection)
-#         #if the distance from the wall is within 2 cm of the desired distance, the robot will continue moving forward
-#         if detection != "red" or "border":
-#             if direction == 1:
-#                 left_motor.set_power(-15)
-#                 right_motor.set_power(-20)
-#                 sleep(0.5
-#                 direction = -1
-#             if direction == -1:
-#                 left_motor.set_power(-20)
-#                 right_motor.set_power(-15)
-#                 sleep(0.5)
-#                 direction = 1
-#         # If the distance from the wall is too large, the robot will adjust itself to move closer to the wall
-#         elif detection == "red" or "border":
-#             left_motor.set_power(-20)
-#             right_motor.set_power(-20)
-#             sleep(0.5)
-#         seconds += seconds
-        # If the distance from the wall is too small, the robot will adjust itself to move away from the wall
-
-#     if detection == "blue" or "red" or "border":
-#         stop_moving(1)
-#         turn_right(-20,15)
-#         sleep(2)
-#         stop_moving(5)
-#         print("still going")
-#         continuous_color_sensor_collection()
+    wallthread = threading.Thread(target = wallfollowing.wallfollowing_f, args = (100, wall_distance))
+    colorthread = threading.Thread(target = wallfollowing.left_continuous_color_sensor_collection, args = ())
+    wallthread.start()
+    colorthread.start()
+#     with flags_lock:
+#         flags["flag1"] = True
+    detections_l = []
+    for i in range(20):
+        detections_l.append("")
+    for i in range(len(detections_l)):
+        around_water(detections_l[i])
+        actual_distance = wall_us.get_value()
+#         if abs(wall_distance - actual_distance) <= 3:
+#             break
+#     wallthread.join()
         
-#         if detection_1 == "red":
-#             stop_moving(0.5)
-#             move_forward(20,15)
-#             sleep(0.5)
-#         continuous_color_sensor_collection()
-#         if continuous_color_sensor_collection() == "red":
-#             stop_moving(3)
-#             turn_right(20, 15)
-#             sleep(0.5)
-#         continuous_color_sensor_collection()
-#         if continuous_color_sensor_collection() == "red":
-#             stop_moving(0.5)
-#             move_forward(20,15)
-#             sleep(0.5)
-#         continuous_color_sensor_collection()
-#         if continuous_color_sensor_collection() == "red":
-#             stop_moving(0.5)
-#             turn_right(20,15)
-#             sleep(0.5)
-        
-        
-    
 
 
-#     t3.start()
-#     t5.start()
-#     time.sleep(6)
-#     t4.start()
-    #print("bye")
     
-#print("hello world")
+    
+    
+
 main_function()
-#turn_right(-20,2.5)
-#sleep(3)
-#print(choose_direction())
-
-#move_forward(-40,4)
-#follow_border()
 
 
+# move_forward(40,1)
+# stop_moving(0.5)
 
