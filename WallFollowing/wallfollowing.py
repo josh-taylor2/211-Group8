@@ -1,9 +1,8 @@
-from utils.brick import wait_ready_sensors, EV3UltrasonicSensor, EV3GyroSensor, Motor, BP
+from utils.brick import wait_ready_sensors, EV3UltrasonicSensor, Motor, BP
 import math
 from time import sleep
 
 board_length = 122
-angle_error = 10
 
 BP.reset_all()
 wait_ready_sensors()
